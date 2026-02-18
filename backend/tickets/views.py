@@ -18,27 +18,28 @@ class TicketViewSet(viewsets.ModelViewSet):
     serializer_class = TicketSerializer
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        # Start with all tickets
+        qs = Ticket.objects.all()
 
-        category = self.request.query_params.get("category")
-        priority = self.request.query_params.get("priority")
-        status_param = self.request.query_params.get("status")
-        search = self.request.query_params.get("search")
+        # ONLY apply filters if we are looking at the LIST view.
+        # This allows PATCH/PUT to work on a single item even if 
+        # there are filter params in the URL.
+        if self.action == 'list':
+            category = self.request.query_params.get("category")
+            priority = self.request.query_params.get("priority")
+            status_param = self.request.query_params.get("status")
+            search = self.request.query_params.get("search")
 
-        if category:
-            qs = qs.filter(category=category)
-
-        if priority:
-            qs = qs.filter(priority=priority)
-
-        if status_param:
-            qs = qs.filter(status=status_param)
-
-        if search:
-            qs = qs.filter(
-                Q(title__icontains=search) |
-                Q(description__icontains=search)
-            )
+            if category:
+                qs = qs.filter(category=category)
+            if priority:
+                qs = qs.filter(priority=priority)
+            if status_param:
+                qs = qs.filter(status=status_param)
+            if search:
+                qs = qs.filter(
+                    Q(title__icontains=search) | Q(description__icontains=search)
+                )
 
         return qs
 
@@ -46,7 +47,6 @@ class TicketViewSet(viewsets.ModelViewSet):
 @api_view(["GET"])
 def ticket_stats(request):
     total_tickets = Ticket.objects.count()
-
     open_tickets = Ticket.objects.filter(status="open").count()
 
     avg_per_day = (
@@ -57,27 +57,11 @@ def ticket_stats(request):
         .aggregate(avg=Avg("count"))
     )["avg"] or 0
 
-    priority_data = (
-        Ticket.objects
-        .values("priority")
-        .annotate(count=Count("id"))
-    )
+    priority_data = Ticket.objects.values("priority").annotate(count=Count("id"))
+    category_data = Ticket.objects.values("category").annotate(count=Count("id"))
 
-    category_data = (
-        Ticket.objects
-        .values("category")
-        .annotate(count=Count("id"))
-    )
-
-    priority_breakdown = {
-        item["priority"]: item["count"]
-        for item in priority_data
-    }
-
-    category_breakdown = {
-        item["category"]: item["count"]
-        for item in category_data
-    }
+    priority_breakdown = {item["priority"]: item["count"] for item in priority_data}
+    category_breakdown = {item["category"]: item["count"] for item in category_data}
 
     return Response({
         "total_tickets": total_tickets,
@@ -108,39 +92,29 @@ def classify_ticket(request):
 
         genai.configure(api_key=api_key)
 
+        # FIXED: Changed model name to a valid version
         model = genai.GenerativeModel(
-            "gemini-2.5-flash",
-            generation_config={
-                "response_mime_type": "application/json"
-            }
+            "gemini-1.5-flash",
+            generation_config={"response_mime_type": "application/json"}
         )
 
         prompt = f"""
 You are a support ticket classifier.
-
 Categories: billing, technical, account, general
 Priorities: low, medium, high, critical
-
 Return ONLY JSON in this format:
 {{
   "category": "...",
   "priority": "..."
 }}
-
 Description:
 \"\"\"{description}\"\"\"
 """
-
         response = model.generate_content(prompt)
         content = response.text.strip()
 
-        # Safe JSON extraction
         start = content.find("{")
         end = content.rfind("}") + 1
-
-        if start == -1 or end == -1:
-            raise ValueError("Invalid JSON response from Gemini")
-
         json_str = content[start:end]
         parsed = json.loads(json_str)
 
