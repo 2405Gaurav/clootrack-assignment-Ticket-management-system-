@@ -1,6 +1,9 @@
 from rest_framework import viewsets
-from django.db.models import Q
-from rest_framework.request import Request
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from django.db.models import Q, Count, Avg
+from django.db.models.functions import TruncDate
+
 from .models import Ticket
 from .serializers import TicketSerializer
 
@@ -33,3 +36,49 @@ class TicketViewSet(viewsets.ModelViewSet):
             )
 
         return qs
+
+
+@api_view(["GET"])
+def ticket_stats(request):
+
+    total_tickets = Ticket.objects.count()
+
+    open_tickets = Ticket.objects.filter(status="open").count()
+
+    avg_per_day = (
+        Ticket.objects
+        .annotate(day=TruncDate("created_at"))
+        .values("day")
+        .annotate(count=Count("id"))
+        .aggregate(avg=Avg("count"))
+    )["avg"] or 0
+
+    priority_data = (
+        Ticket.objects
+        .values("priority")
+        .annotate(count=Count("id"))
+    )
+
+    category_data = (
+        Ticket.objects
+        .values("category")
+        .annotate(count=Count("id"))
+    )
+
+    priority_breakdown = {
+        item["priority"]: item["count"]
+        for item in priority_data
+    }
+
+    category_breakdown = {
+        item["category"]: item["count"]
+        for item in category_data
+    }
+
+    return Response({
+        "total_tickets": total_tickets,
+        "open_tickets": open_tickets,
+        "avg_tickets_per_day": round(avg_per_day, 2),
+        "priority_breakdown": priority_breakdown,
+        "category_breakdown": category_breakdown
+    })
