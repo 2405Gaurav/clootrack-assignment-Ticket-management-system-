@@ -1,0 +1,47 @@
+# =========================
+# Python / Django
+# =========================
+__pycache__/
+*.py[cod]
+*.sqlite3
+db.sqlite3
+.env
+.env.*
+*.log
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# Django
+staticfiles/
+media/
+
+# =========================
+# Node / React
+# =========================
+node_modules/
+build/
+dist/
+coverage/
+
+# =========================
+# Docker
+# =========================
+*.pid
+docker-compose.override.yml
+
+# =========================
+# IDE / OS
+# =========================
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# =========================
+# Misc
+# =========================
+*.swp
+*.swo
